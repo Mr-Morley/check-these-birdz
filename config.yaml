@@ -1,0 +1,11 @@
+regions:
+  - code: ZA-WC
+    name: Western Cape
+  - code: ZA-MP
+    name: Kruger (Mpumalanga)
+species: [African Penguin, Ostrich, Cape Sugarbird, Secretarybird]  # Expanded for all/rare birds
+date_range_days: 90
+headers:
+  map_title: "South African Bird Hotspots"
+  chart_title: "Sightings Trends"
+map_zoom: 6

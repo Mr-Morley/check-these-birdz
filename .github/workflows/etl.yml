@@ -1,0 +1,20 @@
+name: Run ETL
+on:
+  schedule: [{cron: '0 0 * * *'}]  # Daily
+  workflow_dispatch:
+jobs:
+  etl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with: {python-version: '3.12'}
+      - run: pip install -r requirements.txt
+      - env: {EBIRD_API_KEY: ${{ secrets.EBIRD_API_KEY }}}
+        run: python etl.py
+      - run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add data.db
+          git commit -m "Update bird data" || echo "No changes"
+          git push
