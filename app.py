@@ -71,7 +71,7 @@ def create_map(df, selected_species=None):
 
 def main():
     st.set_page_config(layout="wide")
-    st.title("🐦 Check These Birdz - South Africa")
+    st.title("Check These Birdz")
 
     regions = {
         'ZA-WC': 'Western Cape', 
@@ -115,7 +115,7 @@ def main():
         st_folium(m, width=1200, height=700, returned_objects=[]) # resolves the map rendering bug
     
     with col2:
-        st.subheader("📊 Summary")
+        st.subheader("Summary")
         
         if selected_species != "All Species":
             species_data = df[df['com_name'] == selected_species]
@@ -129,7 +129,7 @@ def main():
                 st.write(f"*{row['sci_name']}*")
                 
                 if pd.notna(row['wikipedia_url']):
-                    st.markdown(f"[📖 Wikipedia]({row['wikipedia_url']})")
+                    st.markdown(f"Wikipedia ({row['wikipedia_url']})")
             
             st.subheader("Recent Observations")
             recent = species_data[['obs_dt', 'loc_name', 'how_many']].head(10)
@@ -140,9 +140,5 @@ def main():
             st.metric("Unique Species", df['com_name'].nunique())
             st.metric("Regions Covered", df['region'].nunique())
             
-            st.subheader("Top Species")
-            top_species = df['com_name'].value_counts().head(10)
-            st.bar_chart(top_species)
-
 if __name__ == "__main__":
     main()
