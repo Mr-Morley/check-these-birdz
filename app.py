@@ -3,13 +3,14 @@ import folium
 from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
 import pandas as pd
+from datetime import datetime, timedelta
 
 conn = st.connection("postgresql", type="sql")
 
 @st.cache_data(ttl=3600)
 def get_recent_observations(regions=None, days=7):
     if regions:
-        region_filter = "AND o.region IN (" + ",".join([f"'{r}'" for r in regions]) + ")"
+        region_filter = "WHERE o.region IN (" + ",".join([f"'{r}'" for r in regions]) + ")"
     else:
         region_filter = ""
     
@@ -28,11 +29,19 @@ def get_recent_observations(regions=None, days=7):
         s.wikipedia_url
     FROM observations o
     LEFT JOIN species s ON o.species_code = s.species_code
-    WHERE o.obs_dt >= NOW() - INTERVAL '{days} days'
     {region_filter}
     ORDER BY o.obs_dt DESC
     """
-    return conn.query(query, ttl=600)
+    df = conn.query(query, ttl=600)
+    
+    # Filter by days in Python since obs_dt is TEXT
+    if not df.empty:
+        df['obs_dt_parsed'] = pd.to_datetime(df['obs_dt'], format='%d-%m-%Y %H:%M', errors='coerce')
+        cutoff = datetime.now() - timedelta(days=days)
+        df = df[df['obs_dt_parsed'] >= cutoff]
+        df = df.drop(columns=['obs_dt_parsed'])
+    
+    return df
 
 def create_map(df, selected_species=None):
     if df.empty:
@@ -71,7 +80,7 @@ def create_map(df, selected_species=None):
 
 def main():
     st.set_page_config(layout="wide")
-    st.title("🐦 Check These Birdz - South Africa")
+    st.title("Check These Birdz")
 
     regions = {
         'ZA-WC': 'Western Cape', 
@@ -117,7 +126,7 @@ def main():
         st_folium(m, width=1200, height=700)
     
     with col2:
-        st.subheader("📊 Summary")
+        st.subheader("Summary")
         
         if selected_species != "All Species":
             species_data = df[df['com_name'] == selected_species]
@@ -131,7 +140,7 @@ def main():
                 st.write(f"*{row['sci_name']}*")
                 
                 if pd.notna(row['wikipedia_url']):
-                    st.markdown(f"[📖 Learn More on Wikipedia]({row['wikipedia_url']})")
+                    st.markdown(f"Learn More on Wikipedia({row['wikipedia_url']})")
             
             st.subheader("Recent Observations")
             recent = species_data[['obs_dt', 'loc_name', 'how_many']].head(10)
