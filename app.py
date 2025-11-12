@@ -24,10 +24,10 @@ def get_recent_observations(regions=None):
         o.obs_dt,
         o.how_many,
         o.region,
-        s.sci_name,
+        s."sciName" as sci_name,
         s.wikipedia_url
     FROM observations o
-    LEFT JOIN species s ON o.species_code = s.species_code
+    LEFT JOIN species s ON o.species_code = s."speciesCode"
     {region_filter}
     ORDER BY o.obs_dt DESC
     LIMIT 5000
