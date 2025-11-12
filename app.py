@@ -3,12 +3,11 @@ import folium
 from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
 import pandas as pd
-from datetime import datetime, timedelta
 
 conn = st.connection("postgresql", type="sql")
 
-@st.cache_data(ttl=3600)
-def get_recent_observations(regions=None, days=7):
+@st.cache_data(ttl=600)
+def get_recent_observations(regions=None):
     if regions:
         region_filter = "WHERE o.region IN (" + ",".join([f"'{r}'" for r in regions]) + ")"
     else:
@@ -31,17 +30,9 @@ def get_recent_observations(regions=None, days=7):
     LEFT JOIN species s ON o.species_code = s.species_code
     {region_filter}
     ORDER BY o.obs_dt DESC
+    LIMIT 5000
     """
-    df = conn.query(query, ttl=600)
-    
-    # Filter by days in Python since obs_dt is TEXT
-    if not df.empty:
-        df['obs_dt_parsed'] = pd.to_datetime(df['obs_dt'], format='%d-%m-%Y %H:%M', errors='coerce')
-        cutoff = datetime.now() - timedelta(days=days)
-        df = df[df['obs_dt_parsed'] >= cutoff]
-        df = df.drop(columns=['obs_dt_parsed'])
-    
-    return df
+    return conn.query(query, ttl=0)
 
 def create_map(df, selected_species=None):
     if df.empty:
@@ -80,7 +71,7 @@ def create_map(df, selected_species=None):
 
 def main():
     st.set_page_config(layout="wide")
-    st.title("Check These Birdz")
+    st.title("🐦 Check These Birdz - South Africa")
 
     regions = {
         'ZA-WC': 'Western Cape', 
@@ -102,15 +93,13 @@ def main():
         default=['ZA-WC'],
         format_func=lambda x: regions[x]
     )
-    
-    days = st.sidebar.slider("Days back", 1, 30, 7)
 
     if not selected_regions:
         st.warning("Select at least one region")
         return
 
     with st.spinner("Loading observations..."):
-        df = get_recent_observations(selected_regions, days)
+        df = get_recent_observations(selected_regions)
 
     if df.empty:
         st.warning("No observations found")
@@ -126,7 +115,7 @@ def main():
         st_folium(m, width=1200, height=700)
     
     with col2:
-        st.subheader("Summary")
+        st.subheader("📊 Summary")
         
         if selected_species != "All Species":
             species_data = df[df['com_name'] == selected_species]
@@ -140,7 +129,7 @@ def main():
                 st.write(f"*{row['sci_name']}*")
                 
                 if pd.notna(row['wikipedia_url']):
-                    st.markdown(f"Learn More on Wikipedia({row['wikipedia_url']})")
+                    st.markdown(f"[📖 Wikipedia]({row['wikipedia_url']})")
             
             st.subheader("Recent Observations")
             recent = species_data[['obs_dt', 'loc_name', 'how_many']].head(10)
