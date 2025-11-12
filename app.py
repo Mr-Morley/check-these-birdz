@@ -4,206 +4,128 @@ from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
 import pandas as pd
 import requests
-import sqlalchemy
-from dotenv import load_dotenv
-import os
 
-# Load environment variables
-load_dotenv()
-API_KEY = os.getenv("EBIRD_API_KEY")
-DB_URL = os.getenv("DB_URL")
+# --- NO dotenv, NO SQLAlchemy, NO local DB ---
+conn = st.connection("postgresql", type="sql")
 
-if not API_KEY or not DB_URL:
-    st.error("Missing EBIRD_API_KEY or DB_URL in .env file")
-    st.stop()
-
-# Database connection
-engine = sqlalchemy.create_engine(DB_URL)
+API_KEY = st.secrets["EBIRD_API_KEY"]
 
 @st.cache_data(ttl=3600)
 def fetch_recent_sightings(region_code, days=7):
-    """Fetch recent bird sightings from eBird API"""
     url = f"https://api.ebird.org/v2/data/obs/{region_code}/recent"
     headers = {"X-eBirdApiToken": API_KEY}
     params = {'back': days}
-    
     try:
         resp = requests.get(url, headers=headers, params=params)
         resp.raise_for_status()
-        data = resp.json()
-        
-        if not data:
-            return pd.DataFrame()
-        
-        df = pd.DataFrame(data)
-        # Select relevant columns
-        cols_to_keep = ['comName', 'locName', 'lat', 'lng', 'obsDt', 'howMany', 'speciesCode']
-        df = df[[col for col in cols_to_keep if col in df.columns]]
-        return df
-    except Exception as e:
-        st.error(f"Error fetching from eBird: {e}")
+        df = pd.DataFrame(resp.json())
+        cols = ['comName', 'locName', 'lat', 'lng', 'obsDt', 'howMany', 'speciesCode']
+        return df[[c for c in cols if c in df.columns]]
+    except:
         return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
 def get_species_info(species_codes):
-    """Get species info from PostgreSQL encyclopedia"""
     if not species_codes:
         return pd.DataFrame()
-    
-    try:
-        query = f"""
-        SELECT "speciesCode", "comName", "sciName", "wikipedia_url"
-        FROM species
-        WHERE "speciesCode" IN ({','.join([f"'{code}'" for code in species_codes])})
-        """
-        df = pd.read_sql(query, engine)
-        return df
-    except Exception as e:
-        st.warning(f"Could not load species encyclopedia: {e}")
-        return pd.DataFrame()
+    codes = ",".join([f"'{c}'" for c in species_codes])
+    query = f"""
+    SELECT "speciesCode", "comName", "sciName", "wikipedia_url"
+    FROM species
+    WHERE "speciesCode" IN ({codes})
+    """
+    return conn.query(query, ttl=3600)
 
 def create_map(sightings_df, species_df, selected_species=None):
-    """Create interactive map with markers"""
     if sightings_df.empty:
         return folium.Map(location=[-29.0, 24.0], zoom_start=5)
-    
-    # Filter if species selected
+    df = sightings_df.copy()
     if selected_species and selected_species != "All Species":
-        map_df = sightings_df[sightings_df['comName'] == selected_species].copy()
-    else:
-        map_df = sightings_df.copy()
-    
-    if map_df.empty:
+        df = df[df['comName'] == selected_species]
+    if df.empty:
         return folium.Map(location=[-29.0, 24.0], zoom_start=5)
-    
-    # Merge with species info for Wikipedia URLs
-    map_df = map_df.merge(species_df, on='comName', how='left')
-    
-    # Center map
-    center_lat = map_df['lat'].mean()
-    center_lng = map_df['lng'].mean()
-    m = folium.Map(location=[center_lat, center_lng], zoom_start=6)
-    
+    df = df.merge(species_df, on='comName', how='left')
+    center = [df['lat'].mean(), df['lng'].mean()]
+    m = folium.Map(location=center, zoom_start=6)
     cluster = MarkerCluster().add_to(m)
-    
-    for idx, row in map_df.iterrows():
-        wiki_link = f'<a href="{row["wikipedia_url"]}" target="_blank">View on Wikipedia</a>' if pd.notna(row.get('wikipedia_url')) else "No Wikipedia link"
-        
-        popup_text = f"""
+    for _, row in df.iterrows():
+        wiki = f'<a href="{row["wikipedia_url"]}" target="_blank">Wikipedia</a>' if pd.notna(row["wikipedia_url"]) else "No link"
+        popup = f"""
         <b>{row['comName']}</b><br>
         <i>{row.get('sciName', 'N/A')}</i><br>
-        Location: {row['locName']}<br>
-        Date: {row['obsDt']}<br>
+        {row['locName']}<br>
+        {row['obsDt']}<br>
         Count: {row.get('howMany', 'N/A')}<br>
-        {wiki_link}
+        {wiki}
         """
-        
         folium.Marker(
             [row['lat'], row['lng']],
-            popup=folium.Popup(popup_text, max_width=300),
+            popup=folium.Popup(popup, max_width=300),
             icon=folium.Icon(color='blue', icon='info-sign')
         ).add_to(cluster)
-    
     return m
 
 def main():
     st.set_page_config(layout="wide")
     st.title("Check these birdz")
-    
-    # Sidebar
-    st.sidebar.title("Filters")
+
     regions = {
-        'ZA-WC': 'Western Cape',
-        'ZA-GP': 'Gauteng',
-        'ZA-MP': 'Mpumalanga (Kruger)',
-        'ZA-LP': 'Limpopo',
-        'ZA-NW': 'North West',
-        'ZA-KZ': 'KwaZulu-Natal',
-        'ZA-EC': 'Eastern Cape',
-        'ZA-FS': 'Free State',
-        'ZA-NC': 'Northern Cape'
+        'ZA-WC': 'Western Cape', 'ZA-GP': 'Gauteng', 'ZA-MP': 'Mpumalanga',
+        'ZA-LP': 'Limpopo', 'ZA-NW': 'North West', 'ZA-KZ': 'KwaZulu-Natal',
+        'ZA-EC': 'Eastern Cape', 'ZA-FS': 'Free State', 'ZA-NC': 'Northern Cape'
     }
-    
-    # Multi-select for regions with "Select all" button
+
     col1, col2 = st.sidebar.columns([3, 1])
     with col1:
-        selected_regions = st.multiselect(
-            "Select Region(s)",
-            list(regions.values()),
-            default=list(regions.values())[0:1]  # Default to first region
-        )
+        selected_regions = st.multiselect("Regions", list(regions.values()), default=["Western Cape"])
     with col2:
-        if st.button("Select all", key="select_all_regions"):
+        if st.button("All"):
             st.session_state.selected_regions = list(regions.values())
             st.rerun()
-    
+
     days = st.sidebar.slider("Days back", 1, 30, 7)
-    
-    # Check if regions are selected
+
     if not selected_regions:
-        st.warning("Please select at least one region")
+        st.warning("Select a region")
         return
-    
-    # Fetch data from all selected regions
+
     all_sightings = []
-    region_status = st.sidebar.empty()
-    
-    with st.spinner("Fetching recent sightings..."):
-        for selected_region in selected_regions:
-            region_code = [k for k, v in regions.items() if v == selected_region][0]
-            sightings_df = fetch_recent_sightings(region_code, days)
-            
-            if not sightings_df.empty:
-                sightings_df['region'] = selected_region  # Add region column for tracking
-                all_sightings.append(sightings_df)
-            else:
-                region_status.info(f"ℹ️ No sightings in {selected_region}")
-    
+    with st.spinner("Fetching..."):
+        for region in selected_regions:
+            code = [k for k, v in regions.items() if v == region][0]
+            df = fetch_recent_sightings(code, days)
+            if not df.empty:
+                df['region'] = region
+                all_sightings.append(df)
+
     if not all_sightings:
-        st.warning(f"No recent sightings found for selected regions in the last {days} days")
+        st.warning("No sightings")
         return
-    
-    # Combine all regions
+
     sightings_df = pd.concat(all_sightings, ignore_index=True)
-    
-    # Get species encyclopedia data
     species_codes = sightings_df['speciesCode'].unique().tolist()
     species_df = get_species_info(species_codes)
-    
-    # Dynamic species list
-    all_species = ["All Species"] + sorted(sightings_df['comName'].unique().tolist())
-    
+
+    all_species = ["All Species"] + sorted(sightings_df['comName'].unique())
     col1, col2 = st.columns([2, 1])
-    
     with col1:
-        selected_species = st.selectbox("Select Species", all_species)
-        m = create_map(sightings_df, species_df, selected_species)
+        species = st.selectbox("Species", all_species)
+        m = create_map(sightings_df, species_df, species)
         st_folium(m, width=1000, height=600)
-    
     with col2:
-        st.subheader("Sightings Summary")
-        
-        if selected_species != "All Species":
-            species_data = sightings_df[sightings_df['comName'] == selected_species]
-            st.metric("Total sightings", len(species_data))
-            st.metric("Locations", species_data['locName'].nunique())
-            st.metric("Regions", species_data['region'].nunique())
-            
-            # Show species info from encyclopedia
-            species_info = species_df[species_df['comName'] == selected_species]
-            if not species_info.empty:
-                st.subheader("📖 Species Info")
-                sci_name = species_info.iloc[0].get('sciName', 'N/A')
-                wiki_url = species_info.iloc[0].get('wikipedia_url')
-                
-                st.write(f"**Scientific Name:** {sci_name}")
-                if wiki_url:
-                    st.markdown(f"[🔗 View on Wikipedia]({wiki_url})")
+        st.subheader("Summary")
+        if species != "All Species":
+            data = sightings_df[sightings_df['comName'] == species]
+            st.metric("Sightings", len(data))
+            st.metric("Locations", data['locName'].nunique())
+            info = species_df[species_df['comName'] == species]
+            if not info.empty:
+                st.write(f"**Sci:** {info.iloc[0]['sciName']}")
+                if info.iloc[0]['wikipedia_url']:
+                    st.markdown(f"[Wikipedia]({info.iloc[0]['wikipedia_url']})")
         else:
-            st.metric("Total sightings", len(sightings_df))
-            st.metric("Species found", sightings_df['comName'].nunique())
-            st.metric("Unique locations", sightings_df['locName'].nunique())
-            st.metric("Regions searched", sightings_df['region'].nunique())
+            st.metric("Sightings", len(sightings_df))
+            st.metric("Species", sightings_df['comName'].nunique())
 
 if __name__ == "__main__":
     main()
