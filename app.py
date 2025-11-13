@@ -6,27 +6,6 @@ import pandas as pd
 
 conn = st.connection("postgresql", type="sql")
 
-def check_password():
-    """Returns `True` if the user had the correct password."""
-    
-    if "password_correct" not in st.session_state:
-        st.session_state.password_correct = False
-    
-    if not st.session_state.password_correct:
-        password = st.sidebar.text_input("Dev Password", type="password")
-        
-        if password:
-            if password == st.secrets["dev_password"]:
-                st.session_state.password_correct = True
-                st.rerun()
-            else:
-                st.error("❌ Incorrect password")
-                return False
-        
-        return False
-    
-    return True
-
 @st.cache_data(ttl=600)
 def get_recent_observations(regions=None):
     if regions:
@@ -121,6 +100,27 @@ def create_map(df, selected_species=None, use_heatmap=False):
 
 def main():
     st.set_page_config(layout="wide")
+    
+    # PASSWORD CHECK FIRST - BLOCKS EVERYTHING ELSE
+    if "password_correct" not in st.session_state:
+        st.session_state.password_correct = False
+    
+    if not st.session_state.password_correct:
+        st.title("Check These Birdz - Dev Access Required")
+        password = st.text_input("Enter dev password", type="password")
+        
+        if password:
+            if password == st.secrets.get("dev_password"):
+                st.session_state.password_correct = True
+                st.rerun()
+            else:
+                st.error("Incorrect password")
+                st.stop()
+        else:
+            st.info("Password required to access this app")
+            st.stop()
+    
+    # NOW render the main app - only authenticated users get here
     st.title("Check These Birdz")
 
     regions = {
@@ -192,13 +192,10 @@ def main():
             st.metric("Unique Species", df['com_name'].nunique())
             st.metric("Regions Covered", df['region'].nunique())
     
-    # Developer info panel - PASSWORD PROTECTED
+    # Developer info panel
     with st.sidebar:
         st.divider()
-        if st.checkbox("🔒 Dev Panel", value=False):
-            if not check_password():
-                st.stop()
-            
+        if st.checkbox("Dev Info", value=False):
             st.subheader("Database Info")
             
             try:
@@ -215,11 +212,8 @@ def main():
             except Exception as e:
                 st.error(f"Could not fetch schema: {str(e)}")
     
-    # SQL Query Editor (Dev Only) - PASSWORD PROTECTED
+    # SQL Query Editor (Dev Only)
     with st.expander("SQL Query Editor (Dev)"):
-        if not check_password():
-            st.stop()
-        
         st.warning("Read and write access to database. Use carefully.")
         
         query_type = st.radio("Query Type", ["SELECT (Read-Only)", "DELETE/UPDATE (Cleanup)"], key="query_type")
@@ -334,6 +328,6 @@ def main():
                             st.success("Query executed")
                         except Exception as e:
                             st.error(f"Query error: {str(e)}")
-            
+
 if __name__ == "__main__":
     main()
