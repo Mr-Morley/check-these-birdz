@@ -100,27 +100,6 @@ def create_map(df, selected_species=None, use_heatmap=False):
 
 def main():
     st.set_page_config(layout="wide")
-    
-    # PASSWORD CHECK FIRST - BLOCKS EVERYTHING ELSE
-    if "password_correct" not in st.session_state:
-        st.session_state.password_correct = False
-    
-    if not st.session_state.password_correct:
-        st.title("Check These Birdz - Dev Access Required")
-        password = st.text_input("Enter dev password", type="password")
-        
-        if password:
-            if password == st.secrets.get("dev_password"):
-                st.session_state.password_correct = True
-                st.rerun()
-            else:
-                st.error("Incorrect password")
-                st.stop()
-        else:
-            st.info("Password required to access this app")
-            st.stop()
-    
-    # NOW render the main app - only authenticated users get here
     st.title("Check These Birdz")
 
     regions = {
@@ -192,10 +171,25 @@ def main():
             st.metric("Unique Species", df['com_name'].nunique())
             st.metric("Regions Covered", df['region'].nunique())
     
-    # Developer info panel
+    # Initialize dev auth state
+    if "dev_authenticated" not in st.session_state:
+        st.session_state.dev_authenticated = False
+    
+    # Developer info panel with password
     with st.sidebar:
         st.divider()
+        
         if st.checkbox("Dev Info", value=False):
+            if not st.session_state.dev_authenticated:
+                dev_password = st.text_input("Dev password", type="password", key="dev_pass_sidebar")
+                if dev_password:
+                    if dev_password == st.secrets.get("dev_password"):
+                        st.session_state.dev_authenticated = True
+                        st.rerun()
+                    else:
+                        st.error("Incorrect password")
+                st.stop()
+            
             st.subheader("Database Info")
             
             try:
@@ -212,8 +206,18 @@ def main():
             except Exception as e:
                 st.error(f"Could not fetch schema: {str(e)}")
     
-    # SQL Query Editor (Dev Only)
+    # SQL Query Editor (Dev Only) with password
     with st.expander("SQL Query Editor (Dev)"):
+        if not st.session_state.dev_authenticated:
+            dev_password = st.text_input("Dev password", type="password", key="dev_pass_sql")
+            if dev_password:
+                if dev_password == st.secrets.get("dev_password"):
+                    st.session_state.dev_authenticated = True
+                    st.rerun()
+                else:
+                    st.error("Incorrect password")
+            st.stop()
+        
         st.warning("Read and write access to database. Use carefully.")
         
         query_type = st.radio("Query Type", ["SELECT (Read-Only)", "DELETE/UPDATE (Cleanup)"], key="query_type")
