@@ -11,7 +11,6 @@ import time
 import requests
 import pandas as pd
 import sqlalchemy
-from dotenv import load_dotenv
 
 load_dotenv()
 
