@@ -1,20 +1,29 @@
-name: Run ETL
+name: Weekly Observations ETL
+
 on:
-  schedule: [{cron: '0 0 * * *'}]  # Daily
-  workflow_dispatch:
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9 AM UTC
+  workflow_dispatch:     # Manual trigger for testing
+
 jobs:
   etl:
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with: {python-version: '3.12'}
-      - run: pip install -r requirements.txt
-      - env: {EBIRD_API_KEY: ${{ secrets.EBIRD_API_KEY }}}
-        run: python etl.py
-      - run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add data.db
-          git commit -m "Update bird data" || echo "No changes"
-          git push
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Run ETL script
+        env:
+          EBIRD_API_KEY: ${{ secrets.EBIRD_API_KEY }}
+          DB_URL: ${{ secrets.DB_URL }}
+          IUCN_API_TOKEN: ${{ secrets.IUCN_API_TOKEN }}
+        run: python scripts/update_observations.py
