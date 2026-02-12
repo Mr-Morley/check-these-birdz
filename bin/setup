@@ -1,0 +1,13 @@
+#!/bin/bash
+echo "Installing dotvenv..."
+python3 -m venv .venv
+
+
+if [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+    pip install requests psycopg2-binary python-dotenv
+    echo "Libraries installed."
+else
+    echo "Could not find venv activation script."
+    exit 1
+fi

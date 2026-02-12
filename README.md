@@ -1,2 +1,0 @@
-# check-these-birdz
-birdz
