@@ -2,13 +2,26 @@ version: '3.8'
 services:
   db:
     image: postgres:15
+    container_name: birdz_db
     environment:
-      POSTGRES_DB: simple_db
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: bird_db
+      POSTGRES_USER: bird_user
+      POSTGRES_PASSWORD: password12345
     ports:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: birdz_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: william@birdz.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+
 volumes:
   pg_data:
