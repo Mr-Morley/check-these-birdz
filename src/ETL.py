@@ -6,7 +6,7 @@ class ExtractTransformLoad:
         self.headers={
             "X-eBirdApiToken": api_key
         }
-        self.url="https://api.ebird.org/v2/data/obs/ZA/recent" 
+        self.url="https://api.ebird.org/v2/data/obs/ZA/recent?back=14" 
         #database link
         self.db_url = db_url
         #SQL engine
