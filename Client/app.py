@@ -130,7 +130,7 @@ def get_color(status: str) -> list:
 # SIDEBAR
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown("##Check These Birdz")
+    st.markdown("## Check These Birdz")
     st.caption("Live bird observations across South Africa")
     st.divider()
     days = st.slider("Lookback Window", min_value=1, max_value=14, value=7)
