@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from src.ETL import ExtractTransformLoad 
+from src.ETL import SetupExtractTransformLoad 
 
 def main():
     # Load local variables
@@ -10,7 +10,7 @@ def main():
     #SUPABASE Session Connection URL.
     db_url = os.getenv("DATABASE_URL")
     # Initialize the ETL class with the e-bird API key and database URL
-    etl = ExtractTransformLoad(ebird_key=api_key, db_url=db_url)
+    etl = SetupExtractTransformLoad(ebird_key=api_key, db_url=db_url)
     
     try:
         print("Running Data Extraction Pipeline from Gateways to PostGIS...\n")

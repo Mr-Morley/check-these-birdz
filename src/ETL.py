@@ -2,7 +2,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from .gateways import EBirdGateway, WikipediaEnricher
 
-class ExtractTransformLoad:
+class SetupExtractTransformLoad:
     def __init__(self, ebird_key, db_url):
         # Initialize specialized gateways for eBird and Wikipedia
         self.ebird_api = EBirdGateway(ebird_key)
