@@ -212,7 +212,7 @@ if not df.empty:
                 "borderRadius": "8px",
             }
         },
-        map_style="mapbox://styles/mapbox/dark-v11",
+        map_style="road",
     ))
 
     # --- Table ---
