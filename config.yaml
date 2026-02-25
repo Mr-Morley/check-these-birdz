@@ -1,0 +1,24 @@
+# Client/config.yaml
+
+map_settings:
+  default_radius: 500
+  opacity: 0.8
+  auto_highlight: true
+
+# Use Hex for readability, we will convert to NumPy RGBA in the app
+iucn_colors:
+  CR: "#960000" # Critically Endangered
+  EN: "#FF0000" # Endangered
+  VU: "#FFA500" # Vulnerable
+  NT: "#FFFF00" # Near Threatened
+  LC: [0, 255, 128, 200] # You can keep raw RGBA too
+  default: [200, 200, 200, 150]
+
+provinces: ["Western Cape", "Gauteng", "Limpopo", "KwaZulu-Natal"]# Add this to your existing config.yaml
+spatial_filters:
+  "Western Cape":
+    lat: [-35.0, -30.0]
+    lng: [17.0, 24.0]
+  "Gauteng":
+    lat: [-27.0, -25.0]
+    lng: [27.0, 29.0]
