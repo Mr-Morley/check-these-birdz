@@ -1,5 +1,4 @@
 """
-app.py — Check These Birdz 🐦
 A read-only dashboard displaying recent bird observations across South Africa.
 Connects to a Supabase PostGIS database and visualizes the data.
 """
@@ -225,7 +224,6 @@ if not df.empty:
     display_df["Common Name"] = display_df["Common Name"].str.title()
     display_df["Scientific Name"] = display_df["Scientific Name"].str.title()
 
-    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
-
+    st.dataframe(display_df, width="stretch", hide_index=True, height=400)
 else:
     st.info("No sightings found for this period. Try increasing the lookback window.")
