@@ -1,80 +1,75 @@
-## Project: Check-These-Birdz
+# Check These Birdz
 
-### Description
+A data pipeline and dashboard for South African bird observations.
 
-This project is a data pipeline and web application designed to track and visualize recent bird sightings. It extracts data from the eBird API, processes it through an ETL pipeline, and stores it in a PostgreSQL database. The data is ultimately displayed on a Streamlit-based map interface.
-
-### Prerequisites
-
-* Python 3.12+
-* Docker and Docker Compose
-* eBird API Key
+**Live App:** [check-these-birdz.streamlit.app](https://check-these-birdz.streamlit.app) 
 
 ---
 
-### Setup and Installation
+## What It Does
 
-1. **Virtual Environment**
-Initialize the Python environment and install dependencies:
+This project collects recent bird sightings from the [eBird API](https://ebird.org/home), enriches each species with descriptions and conservation status from [Wikipedia](https://www.wikipedia.org/), and stores everything in a [Supabase](https://supabase.com/) PostgreSQL (PostGIS) database. A weekly automated pipeline keeps the data fresh, and a Streamlit dashboard makes it explorable.
+
+## How It Works
+
+1. **Extract** — Fetch recent observations from eBird for South Africa
+2. **Transform** — Clean and standardise the data, generate unique observation IDs
+3. **Enrich** — Look up new species on Wikipedia for descriptions and IUCN conservation status
+4. **Load** — Insert only new species and observations into the database (no duplicates)
+5. **Automate** — GitHub Actions runs the pipeline weekly every Monday
+6. **Display** — Streamlit dashboard for exploring the data
+
+## Tech Stack
+
+| Layer | Tool |
+|-------|------|
+| Data source | eBird API |
+| Enrichment | Wikipedia API |
+| Database | Supabase (PostgreSQL) |
+| ETL | Python, pandas, SQLAlchemy |
+| Automation | GitHub Actions (weekly cron) |
+| Frontend | Streamlit |
+| Hosting | Streamlit Community Cloud |
+
+## Project Structure
+
+```
+check-these-birdz/
+├── run_pipeline.py          # ETL entrypoint
+├── src/
+│   ├── ETL.py               # Extract, Transform, Load logic
+│   └── gateways.py          # eBird + Wikipedia API clients
+├── Client/
+│   └── app.py               # Streamlit dashboard
+├── .github/workflows/
+│   └── weekly-etl.yml       # Automated weekly pipeline
+├── config.yaml              # App settings
+├── requirements.txt
+└── README.md
+```
+
+## Running Locally
+
 ```bash
+git clone https://github.com/Mr-Morley/check-these-birdz.git
+cd check-these-birdz
 python3 -m venv .venv
 source .venv/bin/activate
-pip install sqlalchemy psycopg2-binary streamlit
-
+pip install -r requirements.txt
 ```
 
-
-2. **Infrastructure**
-Start the database and associated services using the management script:
-```bash
-./scripts/docker-manage.sh up
+Create a `.env` file:
 
 ```
-
-
-3. **Running the Pipeline**
-Execute the ETL process to populate the database:
-```bash
-python3 run_pipeline.py
-
+EBIRD_API_KEY=your_key_here
+DATABASE_URL=your_supabase_connection_string
 ```
 
-
-
----
-
-### Database Management with pgAdmin
-
-To inspect the stored bird sightings visually, use the pgAdmin web interface included in the Docker configuration.
-
-**Connection Details:**
-
-* **URL:** `http://localhost:8080`
-* **Login Email:** (See your docker-compose.yml environment variables)
-* **Login Password:** (See your docker-compose.yml environment variables)
-
-**Steps to Connect:**
-
-1. Open pgAdmin in your browser.
-2. Right-click **Servers** > **Register** > **Server...**
-3. Under the **General** tab, name it "BirdDB".
-4. Under the **Connection** tab:
-* **Host name/address:** `db` (if connecting within Docker) or `localhost` (if connecting from your host machine).
-* **Port:** `5432`
-* **Maintenance database:** `postgres` (or your specific DB name).
-* **Username:** (As defined in your .env or compose file).
-* **Password:** (As defined in your .env or compose file).
-
-
-5. Save the connection. You can now expand the tables under **Schemas > public > Tables** to view the sighting data.
-
----
-
-### Shutdown
-
-To stop the database services:
+Run the pipeline:
 
 ```bash
-./scripts/docker-manage.sh down
-
+python run_pipeline.py
 ```
+
+## Author
+**William Morley** 
