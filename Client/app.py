@@ -365,44 +365,32 @@ if not df.empty:
             # Fetch Wikipedia image
             image_url = get_wiki_image(bird["comname"])
 
-            # Build card
-            image_html = ""
-            if image_url:
-                image_html = f'<img src="{image_url}" alt="{bird["comname"]}"/>'
+            # --- Render with native Streamlit components ---
+            with st.container(border=True):
+                if image_url:
+                    st.image(image_url, use_container_width=True)
 
-            wiki_link = ""
-            if pd.notna(bird["wiki_url"]):
-                wiki_link = (
-                    f'<a href="{bird["wiki_url"]}" target="_blank" '
-                    f'style="color:#48c78e;text-decoration:none;font-weight:500;">'
-                    f"Read on Wikipedia →</a>"
+                st.markdown(
+                    f"**{bird['comname'].title()}**  \n"
+                    f"*{bird['sciname'].title()}*"
                 )
 
-            card_html = f"""
-            <div class="bird-card">
-                {image_html}
-                <h2 style="margin-top:{'0.75rem' if image_url else '0'};">
-                    {bird["comname"].title()}
-                </h2>
-                <div class="sciname">{bird["sciname"].title()}</div>
-                <span class="iucn-badge" style="background:{badge_color};">
-                    {iucn.title()}
-                </span>
-                <div class="detail-row">
-                    <div class="detail-item">
-                        <strong>Sightings:</strong> {sighting_count}
-                    </div>
-                    <div class="detail-item">
-                        <strong>Individuals:</strong> {total_count}
-                    </div>
-                    <div class="detail-item">
-                        <strong>Last seen:</strong> {last_seen}
-                    </div>
-                </div>
-                {wiki_link}
-            </div>
-            """
-            st.markdown(card_html, unsafe_allow_html=True)
+                st.markdown(
+                    f'<span class="iucn-badge" style="background:{badge_color};">'
+                    f"{iucn.title()}</span>",
+                    unsafe_allow_html=True,
+                )
+
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Sightings", sighting_count)
+                m2.metric("Individuals", total_count)
+                m3.metric("Last Seen", last_seen)
+
+                if pd.notna(bird["wiki_url"]):
+                    st.link_button(
+                        "Read on Wikipedia →",
+                        bird["wiki_url"],
+                    )
         else:
             st.caption(
                 "Select a species from the dropdown above — or hover over "
