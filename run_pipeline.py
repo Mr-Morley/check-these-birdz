@@ -1,4 +1,5 @@
 import os
+import sys
 from dotenv import load_dotenv
 from src.ETL import SetupExtractTransformLoad 
 
@@ -18,6 +19,7 @@ def main():
         print("ETL pipeline ran successfully.")
     except Exception as e:
         print(f"Error: {e}")
+        sys.exit(1) 
 
 if __name__ == "__main__":
     main()
