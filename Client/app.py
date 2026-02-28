@@ -334,7 +334,7 @@ if not df.empty:
             tooltip=str(row["comname"]).title(),
         ).add_to(marker_cluster)
 
-    st_folium(m, use_container_width=True, height=550, returned_objects=[])
+    st_folium(m, width="stretch", height=550, returned_objects=[])
 
     # --- Table ---
     st.divider()
@@ -353,7 +353,7 @@ if not df.empty:
     display_df["Common Name"] = display_df["Common Name"].str.title()
     display_df["Scientific Name"] = display_df["Scientific Name"].str.title()
 
-    st.dataframe(display_df, use_container_width=True, hide_index=True, height=400)
+    st.dataframe(display_df, width="stretch", hide_index=True, height=400)
 else:
     st.info(
         "No sightings found for this period. Try increasing the lookback window."
