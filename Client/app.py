@@ -214,10 +214,14 @@ st.markdown(
 # HELPERS
 # ---------------------------------------------------------------------------
 
-def build_popup_html(row: pd.Series, image_url: str | None) -> str:
-    """Builds the HTML for a Folium click-popup card."""
+def build_popup_html(row: pd.Series) -> str:
+    """Builds the HTML for a Folium popup that fetches images via JS on click."""
     comname = str(row["comname"]).title()
-    sciname = str(row["sciname"]).title()
+    sciname = str(row["sciname"])
+    
+    # Format precisely for the API: Capitalized_genus lowercase_species
+    wiki_slug = sciname.replace(" ", "_").capitalize()
+    
     iucn = (
         str(row["iucn_status"]).title()
         if pd.notna(row["iucn_status"])
@@ -232,14 +236,6 @@ def build_popup_html(row: pd.Series, image_url: str | None) -> str:
     )
     wiki_url = row.get("wiki_url", "")
 
-    img_block = ""
-    if image_url:
-        img_block = (
-            f'<img src="{image_url}" '
-            f'style="width:100%;max-height:160px;object-fit:cover;'
-            f'border-radius:8px;margin-bottom:8px;" />'
-        )
-
     wiki_block = ""
     if pd.notna(wiki_url) and wiki_url:
         wiki_block = (
@@ -248,19 +244,25 @@ def build_popup_html(row: pd.Series, image_url: str | None) -> str:
             f'Wikipedia →</a>'
         )
 
+    # We need a unique ID for each image container so the JS knows where to put the picture
+    unique_id = f"img_{row['obs_id']}"
+
+    # Note the double curly braces {{ }} in the script tag! 
+    # This stops Python's f-string from breaking on JavaScript syntax.
     return f"""
     <div style="font-family:sans-serif;min-width:220px;max-width:280px;">
-        {img_block}
+        
+        <div id="{unique_id}" style="text-align:center; font-size:12px; color:#888; margin-bottom:8px;">
+            <i>Loading image...</i>
+        </div>
+        
         <div style="font-size:15px;font-weight:700;margin-bottom:2px;">
             {comname}
         </div>
-        <div style="font-size:12px;color:#888;font-style:italic;
-                    margin-bottom:6px;">
-            {sciname}
+        <div style="font-size:12px;color:#888;font-style:italic;margin-bottom:6px;">
+            {sciname.title()}
         </div>
-        <span style="display:inline-block;padding:2px 8px;border-radius:12px;
-                     font-size:11px;font-weight:600;color:white;
-                     background:{badge_color};">
+        <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;color:white;background:{badge_color};">
             {iucn}
         </span>
         <div style="margin-top:8px;font-size:12px;color:#555;">
@@ -268,10 +270,25 @@ def build_popup_html(row: pd.Series, image_url: str | None) -> str:
             <b>Observed:</b> {obs_date}
         </div>
         <div style="margin-top:6px;">{wiki_block}</div>
+        
+        <script>
+            fetch('https://en.wikipedia.org/api/rest_v1/page/summary/{wiki_slug}')
+                .then(response => response.json())
+                .then(data => {{
+                    const container = document.getElementById('{unique_id}');
+                    if(data.thumbnail && data.thumbnail.source) {{
+                        container.innerHTML = '<img src="' + data.thumbnail.source + '" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;" />';
+                    }} else {{
+                        // If no image exists, hide the "Loading..." text
+                        container.style.display = 'none'; 
+                    }}
+                }})
+                .catch(error => {{
+                    document.getElementById('{unique_id}').style.display = 'none';
+                }});
+        </script>
     </div>
     """
-
-
 # ---------------------------------------------------------------------------
 # DASHBOARD
 # ---------------------------------------------------------------------------
@@ -329,11 +346,9 @@ if not df.empty:
         clean_status = raw_status.title() if raw_status else "Unknown"
         color = get_marker_color(raw_status)
         
-        # Get image using scientific name
-        image_url = species_images.get(row["sciname"])
-        popup_html = build_popup_html(row, image_url)
+        # Notice we don't pass an image_url to Python anymore
+        popup_html = build_popup_html(row)
         
-        # Wrap HTML in an IFrame to ensure images aren't blocked/stripped
         iframe = folium.IFrame(html=popup_html, width=260, height=240)
         popup = folium.Popup(iframe, max_width=260)
 
@@ -348,6 +363,7 @@ if not df.empty:
             popup=popup,
             tooltip=str(row["comname"]).title(),
         ).add_to(feature_groups[clean_status])
+
 
     # 3. Add the Layer Control so users can toggle IUCN statuses
     folium.LayerControl(position='topright', collapsed=False).add_to(m)
