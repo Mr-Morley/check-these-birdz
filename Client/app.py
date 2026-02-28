@@ -5,8 +5,10 @@ Connects to a Supabase PostGIS database and visualizes the data.
 
 import streamlit as st
 import pandas as pd
-import pydeck as pdk
 import requests
+import folium
+from folium.plugins import MarkerCluster
+from streamlit_folium import st_folium
 from sqlalchemy import create_engine, text
 
 # ---------------------------------------------------------------------------
@@ -53,7 +55,7 @@ def get_sightings(days: int) -> pd.DataFrame:
             o.obsdt
         FROM observations o
         JOIN species s ON o.speciescode = s.speciescode
-        WHERE o.obsdt >= NOW() - MAKE_INTERVAL(days => :days)
+        WHERE o.obsdt >= (CURRENT_DATE - :days)
         ORDER BY o.obsdt DESC
     """)
     with engine.connect() as conn:
@@ -101,6 +103,7 @@ st.markdown("""
         margin-bottom: 2rem;
     }
 
+    /* --- Metrics: force dark text on light background --- */
     [data-testid="stMetric"] {
         background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         border: 1px solid #dee2e6;
@@ -108,71 +111,35 @@ st.markdown("""
         padding: 1rem 1.25rem;
     }
 
-    [data-testid="stMetricValue"] {
-        font-family: 'DM Serif Display', serif;
-        color: #1a1a2e;
+    [data-testid="stMetric"] label,
+    [data-testid="stMetric"] [data-testid="stMetricLabel"],
+    [data-testid="stMetric"] [data-testid="stMetricLabel"] p,
+    [data-testid="stMetric"] [data-testid="stMetricLabel"] div {
+        color: #495057 !important;
     }
 
+    [data-testid="stMetric"] [data-testid="stMetricValue"],
+    [data-testid="stMetric"] [data-testid="stMetricValue"] div {
+        font-family: 'DM Serif Display', serif;
+        color: #1a1a2e !important;
+    }
+
+    /* --- Sidebar: dark bg, light text, but don't clobber everything --- */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
     }
 
-    [data-testid="stSidebar"] * {
+    [data-testid="stSidebar"] [data-testid="stMarkdown"] p,
+    [data-testid="stSidebar"] [data-testid="stMarkdown"] span:not(.iucn-dot),
+    [data-testid="stSidebar"] .stSlider label,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] a {
         color: #e9ecef !important;
     }
 
-    /* Bird detail card */
-    .bird-card {
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        border: 1px solid #dee2e6;
-        border-radius: 16px;
-        padding: 1.5rem;
-        margin-top: 0.5rem;
-    }
-
-    .bird-card h2 {
-        font-family: 'DM Serif Display', serif;
-        color: #1a1a2e;
-        margin: 0 0 0.25rem 0;
-        font-size: 1.6rem;
-    }
-
-    .bird-card .sciname {
-        color: #6c757d;
-        font-style: italic;
-        margin-bottom: 0.75rem;
-    }
-
-    .bird-card .detail-row {
-        display: flex;
-        gap: 1.5rem;
-        flex-wrap: wrap;
-        margin: 0.75rem 0;
-    }
-
-    .bird-card .detail-item {
-        font-size: 0.9rem;
-        color: #495057;
-    }
-
-    .bird-card .detail-item strong {
-        color: #1a1a2e;
-    }
-
-    .iucn-badge {
-        display: inline-block;
-        padding: 3px 10px;
-        border-radius: 20px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: white;
-    }
-
-    .bird-card img {
-        border-radius: 12px;
-        width: 100%;
-        max-height: 280px;
-        object-fit: cover;
+    /* IUCN legend dots keep their own color */
+    .iucn-dot {
+        color: inherit !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -180,40 +147,25 @@ st.markdown("""
 # ---------------------------------------------------------------------------
 # IUCN COLOR MAP
 # ---------------------------------------------------------------------------
-IUCN_COLORS = {
-    "least concern":          [72, 199, 142, 180],
-    "near threatened":        [255, 193, 7, 180],
-    "vulnerable":             [255, 152, 0, 180],
-    "endangered":             [244, 67, 54, 180],
-    "critically endangered":  [183, 28, 28, 200],
-}
-DEFAULT_COLOR = [158, 158, 158, 160]
-
-IUCN_BADGE_COLORS = {
+IUCN_COLORS_HEX = {
     "least concern":          "#48c78e",
     "near threatened":        "#ffc107",
     "vulnerable":             "#ff9800",
     "endangered":             "#f44336",
     "critically endangered":  "#b71c1c",
 }
+DEFAULT_HEX = "#9e9e9e"
 
 
-def get_color(status: str) -> list:
-    """Maps IUCN status to an RGBA color."""
+def get_marker_color(status: str) -> str:
+    """Maps IUCN status to a hex color for map markers."""
+    if not status:
+        return DEFAULT_HEX
     status_lower = str(status).lower()
-    for key, color in IUCN_COLORS.items():
+    for key, color in IUCN_COLORS_HEX.items():
         if key in status_lower:
             return color
-    return DEFAULT_COLOR
-
-
-def get_badge_color(status: str) -> str:
-    """Maps IUCN status to a hex color for badges."""
-    status_lower = str(status).lower()
-    for key, color in IUCN_BADGE_COLORS.items():
-        if key in status_lower:
-            return color
-    return "#9e9e9e"
+    return DEFAULT_HEX
 
 
 # ---------------------------------------------------------------------------
@@ -223,15 +175,14 @@ with st.sidebar:
     st.markdown("## Check These Birdz")
     st.caption("Live bird observations across South Africa")
     st.divider()
-    days = st.slider("Lookback Window", min_value=1, max_value=14, value=7)
+    days = st.slider("Lookback Window (days)", min_value=1, max_value=14, value=7)
     st.divider()
 
-    # IUCN legend
     st.markdown("**IUCN Status Legend**")
-    for label, rgba in IUCN_COLORS.items():
-        hex_col = "#{:02x}{:02x}{:02x}".format(*rgba[:3])
+    for label, hex_color in IUCN_COLORS_HEX.items():
         st.markdown(
-            f'<span style="color:{hex_col}; font-size:1.3rem;">●</span> '
+            f'<span class="iucn-dot" style="color:{hex_color};'
+            f'font-size:1.4rem;line-height:1;">●</span>&nbsp;'
             f'{label.title()}',
             unsafe_allow_html=True,
         )
@@ -252,9 +203,73 @@ df = get_sightings(days=days)
 # ---------------------------------------------------------------------------
 st.markdown('<p class="main-title">Check These Birdz</p>', unsafe_allow_html=True)
 st.markdown(
-    f'<p class="subtitle">Live bird observations across South Africa — last {days} days</p>',
+    f'<p class="subtitle">Live bird observations across South Africa'
+    f' — last {days} days</p>',
     unsafe_allow_html=True,
 )
+
+
+# ---------------------------------------------------------------------------
+# HELPERS
+# ---------------------------------------------------------------------------
+
+def build_popup_html(row: pd.Series, image_url: str | None) -> str:
+    """Builds the HTML for a Folium click-popup card."""
+    comname = str(row["comname"]).title()
+    sciname = str(row["sciname"]).title()
+    iucn = (
+        str(row["iucn_status"]).title()
+        if pd.notna(row["iucn_status"])
+        else "Unknown"
+    )
+    badge_color = get_marker_color(str(row.get("iucn_status", "")))
+    count = row["howmany"] if pd.notna(row["howmany"]) else "—"
+    obs_date = (
+        row["obsdt"].strftime("%d %b %Y")
+        if pd.notna(row["obsdt"])
+        else "—"
+    )
+    wiki_url = row.get("wiki_url", "")
+
+    img_block = ""
+    if image_url:
+        img_block = (
+            f'<img src="{image_url}" '
+            f'style="width:100%;max-height:160px;object-fit:cover;'
+            f'border-radius:8px;margin-bottom:8px;" />'
+        )
+
+    wiki_block = ""
+    if pd.notna(wiki_url) and wiki_url:
+        wiki_block = (
+            f'<a href="{wiki_url}" target="_blank" '
+            f'style="color:#48c78e;text-decoration:none;font-weight:600;">'
+            f'Wikipedia →</a>'
+        )
+
+    return f"""
+    <div style="font-family:sans-serif;min-width:220px;max-width:280px;">
+        {img_block}
+        <div style="font-size:15px;font-weight:700;margin-bottom:2px;">
+            {comname}
+        </div>
+        <div style="font-size:12px;color:#888;font-style:italic;
+                    margin-bottom:6px;">
+            {sciname}
+        </div>
+        <span style="display:inline-block;padding:2px 8px;border-radius:12px;
+                     font-size:11px;font-weight:600;color:white;
+                     background:{badge_color};">
+            {iucn}
+        </span>
+        <div style="margin-top:8px;font-size:12px;color:#555;">
+            <b>Count:</b> {count} &nbsp;|&nbsp;
+            <b>Observed:</b> {obs_date}
+        </div>
+        <div style="margin-top:6px;">{wiki_block}</div>
+    </div>
+    """
+
 
 # ---------------------------------------------------------------------------
 # DASHBOARD
@@ -280,122 +295,46 @@ if not df.empty:
 
     st.divider()
 
-    # --- Map + Detail Panel ---
-    # Prepare map data
-    df["color"] = df["iucn_status"].apply(get_color)
+    # --- Folium Map with click popups ---
+    # Pre-fetch images once per species (cached for 24h)
+    species_images: dict[str, str | None] = {}
+    for name in df["comname"].unique():
+        species_images[name] = get_wiki_image(name)
 
-    # Build a unique-species list for the selectbox (sorted alphabetically)
-    species_options = (
-        df[["speciescode", "comname", "sciname"]]
-        .drop_duplicates(subset="speciescode")
-        .sort_values("comname")
+    center_lat = df["lat"].mean()
+    center_lng = df["lng"].mean()
+
+    m = folium.Map(
+        location=[center_lat, center_lng],
+        zoom_start=6,
+        tiles="CartoDB positron",
     )
-    species_display = ["Click a species below to view details"] + [
-        row["comname"] for _, row in species_options.iterrows()
-    ]
 
-    map_col, detail_col = st.columns([3, 2], gap="large")
+    marker_cluster = MarkerCluster(
+        options={
+            "maxClusterRadius": 40,
+            "spiderfyOnMaxZoom": True,
+        }
+    ).add_to(m)
 
-    with map_col:
-        st.pydeck_chart(
-            pdk.Deck(
-                layers=[
-                    pdk.Layer(
-                        "ScatterplotLayer",
-                        data=df,
-                        get_position=["lng", "lat"],
-                        get_fill_color="color",
-                        get_radius=3000,
-                        pickable=True,
-                        auto_highlight=True,
-                        highlight_color=[255, 255, 255, 80],
-                    )
-                ],
-                initial_view_state=pdk.ViewState(
-                    longitude=df["lng"].mean(),
-                    latitude=df["lat"].mean(),
-                    zoom=5,
-                    pitch=0,
-                ),
-                tooltip={
-                    "html": (
-                        '<div style="font-family:sans-serif;padding:4px;">'
-                        "<b>{comname}</b><br/>"
-                        '<i style="color:#aaa;">{sciname}</i><br/>'
-                        "Count: {howmany}"
-                        "</div>"
-                    ),
-                    "style": {
-                        "backgroundColor": "#1a1a2e",
-                        "color": "#e9ecef",
-                        "borderRadius": "8px",
-                    },
-                },
-                map_style="road",
-            )
-        )
+    for _, row in df.iterrows():
+        color = get_marker_color(str(row.get("iucn_status", "")))
+        image_url = species_images.get(row["comname"])
+        popup_html = build_popup_html(row, image_url)
 
-    with detail_col:
-        st.markdown("#### 🔍 Bird Detail")
-        selected = st.selectbox(
-            "Select a species",
-            species_display,
-            label_visibility="collapsed",
-        )
+        folium.CircleMarker(
+            location=[row["lat"], row["lng"]],
+            radius=7,
+            color=color,
+            fill=True,
+            fill_color=color,
+            fill_opacity=0.7,
+            weight=2,
+            popup=folium.Popup(popup_html, max_width=300),
+            tooltip=str(row["comname"]).title(),
+        ).add_to(marker_cluster)
 
-        if selected != species_display[0]:
-            # Find matching rows
-            bird_rows = df[df["comname"] == selected]
-            bird = bird_rows.iloc[0]
-
-            iucn = bird["iucn_status"] if pd.notna(bird["iucn_status"]) else "Unknown"
-            badge_color = get_badge_color(iucn)
-            sighting_count = len(bird_rows)
-            total_count = (
-                int(bird_rows["howmany"].sum())
-                if bird_rows["howmany"].notna().any()
-                else 0
-            )
-            last_seen = (
-                bird_rows["obsdt"].max().strftime("%d %b %Y")
-                if bird_rows["obsdt"].notna().any()
-                else "N/A"
-            )
-
-            # Fetch Wikipedia image
-            image_url = get_wiki_image(bird["comname"])
-
-            # --- Render with native Streamlit components ---
-            with st.container(border=True):
-                if image_url:
-                    st.image(image_url, use_container_width=True)
-
-                st.markdown(
-                    f"**{bird['comname'].title()}**  \n"
-                    f"*{bird['sciname'].title()}*"
-                )
-
-                st.markdown(
-                    f'<span class="iucn-badge" style="background:{badge_color};">'
-                    f"{iucn.title()}</span>",
-                    unsafe_allow_html=True,
-                )
-
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Sightings", sighting_count)
-                m2.metric("Individuals", total_count)
-                m3.metric("Last Seen", last_seen)
-
-                if pd.notna(bird["wiki_url"]):
-                    st.link_button(
-                        "Read on Wikipedia →",
-                        bird["wiki_url"],
-                    )
-        else:
-            st.caption(
-                "Select a species from the dropdown above — or hover over "
-                "dots on the map to identify a bird, then find it here."
-            )
+    st_folium(m, use_container_width=True, height=550, returned_objects=[])
 
     # --- Table ---
     st.divider()
