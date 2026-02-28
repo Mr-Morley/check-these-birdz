@@ -5,9 +5,8 @@ Connects to a Supabase PostGIS database and visualizes the data.
 
 import streamlit as st
 import pandas as pd
-import requests
+import numpy as np
 import folium
-from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
 from sqlalchemy import create_engine, text
 
@@ -61,23 +60,6 @@ def get_sightings(days: int) -> pd.DataFrame:
     with engine.connect() as conn:
         return pd.read_sql(query, conn, params={"days": days})
 
-
-
-@st.cache_data(ttl=86400, show_spinner=True)
-def get_wiki_image(sciname: str) -> str | None:
-    """Fetches the main image URL for a species using its scientific name."""
-    api_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
-    # Scientific names are much cleaner for Wikipedia URLs
-    slug = sciname.replace(" ", "_").capitalize()
-    try:
-        resp = requests.get(f"{api_url}{slug}", timeout=5)
-        if resp.ok:
-            data = resp.json()
-            return data.get("thumbnail", {}).get("source")
-    except requests.RequestException:
-        pass
-    return None
-
 # ---------------------------------------------------------------------------
 # STYLING
 # ---------------------------------------------------------------------------
@@ -104,7 +86,6 @@ st.markdown("""
         margin-bottom: 2rem;
     }
 
-    /* --- Metrics: force dark text on light background --- */
     [data-testid="stMetric"] {
         background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         border: 1px solid #dee2e6;
@@ -125,7 +106,6 @@ st.markdown("""
         color: #1a1a2e !important;
     }
 
-    /* --- Sidebar: dark bg, light text, but don't clobber everything --- */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
     }
@@ -138,7 +118,6 @@ st.markdown("""
         color: #e9ecef !important;
     }
 
-    /* IUCN legend dots keep their own color */
     .iucn-dot {
         color: inherit !important;
     }
@@ -157,7 +136,6 @@ IUCN_COLORS_HEX = {
 }
 DEFAULT_HEX = "#9e9e9e"
 
-
 def get_marker_color(status: str) -> str:
     """Maps IUCN status to a hex color for map markers."""
     if not status:
@@ -167,7 +145,6 @@ def get_marker_color(status: str) -> str:
         if key in status_lower:
             return color
     return DEFAULT_HEX
-
 
 # ---------------------------------------------------------------------------
 # SIDEBAR
@@ -209,31 +186,21 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
 # ---------------------------------------------------------------------------
 # HELPERS
 # ---------------------------------------------------------------------------
-
 def build_popup_html(row: pd.Series) -> str:
     """Builds the HTML for a Folium popup that fetches images via JS on click."""
     comname = str(row["comname"]).title()
     sciname = str(row["sciname"])
     
-    # Format precisely for the API: Capitalized_genus lowercase_species
     wiki_slug = sciname.replace(" ", "_").capitalize()
     
-    iucn = (
-        str(row["iucn_status"]).title()
-        if pd.notna(row["iucn_status"])
-        else "Unknown"
-    )
-    badge_color = get_marker_color(str(row.get("iucn_status", "")))
+    iucn = str(row["iucn_status"]).title()
+    badge_color = get_marker_color(str(row["iucn_status"]))
+    
     count = row["howmany"] if pd.notna(row["howmany"]) else "—"
-    obs_date = (
-        row["obsdt"].strftime("%d %b %Y")
-        if pd.notna(row["obsdt"])
-        else "—"
-    )
+    obs_date = row["obsdt"].strftime("%d %b %Y") if pd.notna(row["obsdt"]) else "—"
     wiki_url = row.get("wiki_url", "")
 
     wiki_block = ""
@@ -244,11 +211,8 @@ def build_popup_html(row: pd.Series) -> str:
             f'Wikipedia →</a>'
         )
 
-    # We need a unique ID for each image container so the JS knows where to put the picture
     unique_id = f"img_{row['obs_id']}"
 
-    # Note the double curly braces {{ }} in the script tag! 
-    # This stops Python's f-string from breaking on JavaScript syntax.
     return f"""
     <div style="font-family:sans-serif;min-width:220px;max-width:280px;">
         
@@ -279,7 +243,6 @@ def build_popup_html(row: pd.Series) -> str:
                     if(data.thumbnail && data.thumbnail.source) {{
                         container.innerHTML = '<img src="' + data.thumbnail.source + '" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;" />';
                     }} else {{
-                        // If no image exists, hide the "Loading..." text
                         container.style.display = 'none'; 
                     }}
                 }})
@@ -289,10 +252,14 @@ def build_popup_html(row: pd.Series) -> str:
         </script>
     </div>
     """
+
 # ---------------------------------------------------------------------------
 # DASHBOARD
 # ---------------------------------------------------------------------------
 if not df.empty:
+    
+    # 1. FIX: Clean missing IUCN statuses immediately so dictionary keys match perfectly
+    df["iucn_status"] = df["iucn_status"].fillna("Unknown").replace("None", "Unknown")
 
     # --- Metrics ---
     col1, col2, col3, col4 = st.columns(4)
@@ -304,23 +271,12 @@ if not df.empty:
         total = int(df["howmany"].sum()) if df["howmany"].notna().any() else 0
         st.metric("Individual Birds", f"{total:,}")
     with col4:
-        latest = (
-            df["obsdt"].max().strftime("%d %b %Y")
-            if df["obsdt"].notna().any()
-            else "N/A"
-        )
+        latest = df["obsdt"].max().strftime("%d %b %Y") if df["obsdt"].notna().any() else "N/A"
         st.metric("Latest Observation", latest)
 
     st.divider()
 
-    # --- Folium Map with click popups ---
-    # Pre-fetch images once per species (cached for 24h)
-# --- Folium Map with click popups ---
-    # Pre-fetch images once per species using Scientific Name
-    species_images: dict[str, str | None] = {}
-    for sciname in df["sciname"].unique():
-        species_images[sciname] = get_wiki_image(sciname)
-
+    # --- Folium Map ---
     center_lat = df["lat"].mean()
     center_lng = df["lng"].mean()
 
@@ -330,30 +286,30 @@ if not df.empty:
         tiles="CartoDB positron",
     )
 
-    # 1. Create a FeatureGroup for each IUCN status present in the data
+    # Create a FeatureGroup for each exact IUCN status
     feature_groups = {}
-    statuses = df["iucn_status"].fillna("Unknown").unique()
-    for status in statuses:
-        # Title-case the status for the Layer Control menu
+    for status in df["iucn_status"].unique():
         clean_status = str(status).title()
         fg = folium.FeatureGroup(name=clean_status)
         feature_groups[clean_status] = fg
         m.add_child(fg)
 
-    # 2. Add markers to their respective FeatureGroup
+    # 2. ADD JITTER: Prevents perfect coordinate overlap so you can click exact points
+    # 0.0001 degrees is roughly 11 meters of spread
+    df["lat_jitter"] = df["lat"] + np.random.normal(0, 0.0001, size=len(df))
+    df["lng_jitter"] = df["lng"] + np.random.normal(0, 0.0001, size=len(df))
+
+    # Add markers
     for _, row in df.iterrows():
-        raw_status = str(row.get("iucn_status", ""))
-        clean_status = raw_status.title() if raw_status else "Unknown"
-        color = get_marker_color(raw_status)
+        clean_status = str(row["iucn_status"]).title()
+        color = get_marker_color(clean_status)
         
-        # Notice we don't pass an image_url to Python anymore
         popup_html = build_popup_html(row)
-        
         iframe = folium.IFrame(html=popup_html, width=260, height=240)
         popup = folium.Popup(iframe, max_width=260)
 
         folium.CircleMarker(
-            location=[row["lat"], row["lng"]],
+            location=[row["lat_jitter"], row["lng_jitter"]],
             radius=6,
             color=color,
             fill=True,
@@ -364,30 +320,20 @@ if not df.empty:
             tooltip=str(row["comname"]).title(),
         ).add_to(feature_groups[clean_status])
 
-
-    # 3. Add the Layer Control so users can toggle IUCN statuses
     folium.LayerControl(position='topright', collapsed=False).add_to(m)
 
     st_folium(m, width="stretch", height=550, returned_objects=[])
+
     # --- Table ---
     st.divider()
     st.markdown("### Recent Sightings")
 
-    display_df = df[
-        ["comname", "sciname", "iucn_status", "howmany", "obsdt"]
-    ].copy()
-    display_df.columns = [
-        "Common Name",
-        "Scientific Name",
-        "IUCN Status",
-        "Count",
-        "Observed",
-    ]
+    display_df = df[["comname", "sciname", "iucn_status", "howmany", "obsdt"]].copy()
+    display_df.columns = ["Common Name", "Scientific Name", "IUCN Status", "Count", "Observed"]
     display_df["Common Name"] = display_df["Common Name"].str.title()
     display_df["Scientific Name"] = display_df["Scientific Name"].str.title()
+    display_df["IUCN Status"] = display_df["IUCN Status"].str.title()
 
     st.dataframe(display_df, width="stretch", hide_index=True, height=400)
 else:
-    st.info(
-        "No sightings found for this period. Try increasing the lookback window."
-    )
+    st.info("No sightings found for this period. Try increasing the lookback window.")
