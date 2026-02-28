@@ -2,7 +2,7 @@
 
 A data pipeline and dashboard for South African bird observations.
 
-**Live App:** [check-these-birdz.streamlit.app](https://check-these-birdz.streamlit.app) 
+**Live App:** [CheckTheseBirdz.streamlit.app](https://checkthesebirdz.streamlit.app) 
 
 ---
 
