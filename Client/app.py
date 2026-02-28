@@ -62,11 +62,13 @@ def get_sightings(days: int) -> pd.DataFrame:
         return pd.read_sql(query, conn, params={"days": days})
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def get_wiki_image(species_name: str) -> str | None:
-    """Fetches the main image URL for a species from Wikipedia."""
+
+@st.cache_data(ttl=86400, show_spinner=True)
+def get_wiki_image(sciname: str) -> str | None:
+    """Fetches the main image URL for a species using its scientific name."""
     api_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
-    slug = species_name.replace(" ", "_")
+    # Scientific names are much cleaner for Wikipedia URLs
+    slug = sciname.replace(" ", "_").capitalize()
     try:
         resp = requests.get(f"{api_url}{slug}", timeout=5)
         if resp.ok:
@@ -75,7 +77,6 @@ def get_wiki_image(species_name: str) -> str | None:
     except requests.RequestException:
         pass
     return None
-
 
 # ---------------------------------------------------------------------------
 # STYLING
@@ -297,9 +298,11 @@ if not df.empty:
 
     # --- Folium Map with click popups ---
     # Pre-fetch images once per species (cached for 24h)
+# --- Folium Map with click popups ---
+    # Pre-fetch images once per species using Scientific Name
     species_images: dict[str, str | None] = {}
-    for name in df["comname"].unique():
-        species_images[name] = get_wiki_image(name)
+    for sciname in df["sciname"].unique():
+        species_images[sciname] = get_wiki_image(sciname)
 
     center_lat = df["lat"].mean()
     center_lng = df["lng"].mean()
@@ -310,32 +313,46 @@ if not df.empty:
         tiles="CartoDB positron",
     )
 
-    marker_cluster = MarkerCluster(
-        options={
-            "maxClusterRadius": 40,
-            "spiderfyOnMaxZoom": True,
-        }
-    ).add_to(m)
+    # 1. Create a FeatureGroup for each IUCN status present in the data
+    feature_groups = {}
+    statuses = df["iucn_status"].fillna("Unknown").unique()
+    for status in statuses:
+        # Title-case the status for the Layer Control menu
+        clean_status = str(status).title()
+        fg = folium.FeatureGroup(name=clean_status)
+        feature_groups[clean_status] = fg
+        m.add_child(fg)
 
+    # 2. Add markers to their respective FeatureGroup
     for _, row in df.iterrows():
-        color = get_marker_color(str(row.get("iucn_status", "")))
-        image_url = species_images.get(row["comname"])
+        raw_status = str(row.get("iucn_status", ""))
+        clean_status = raw_status.title() if raw_status else "Unknown"
+        color = get_marker_color(raw_status)
+        
+        # Get image using scientific name
+        image_url = species_images.get(row["sciname"])
         popup_html = build_popup_html(row, image_url)
+        
+        # Wrap HTML in an IFrame to ensure images aren't blocked/stripped
+        iframe = folium.IFrame(html=popup_html, width=260, height=240)
+        popup = folium.Popup(iframe, max_width=260)
 
         folium.CircleMarker(
             location=[row["lat"], row["lng"]],
-            radius=7,
+            radius=6,
             color=color,
             fill=True,
             fill_color=color,
-            fill_opacity=0.7,
-            weight=2,
-            popup=folium.Popup(popup_html, max_width=300),
+            fill_opacity=0.8,
+            weight=1.5,
+            popup=popup,
             tooltip=str(row["comname"]).title(),
-        ).add_to(marker_cluster)
+        ).add_to(feature_groups[clean_status])
+
+    # 3. Add the Layer Control so users can toggle IUCN statuses
+    folium.LayerControl(position='topright', collapsed=False).add_to(m)
 
     st_folium(m, width="stretch", height=550, returned_objects=[])
-
     # --- Table ---
     st.divider()
     st.markdown("### Recent Sightings")
