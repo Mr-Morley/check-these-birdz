@@ -118,9 +118,6 @@ st.markdown("""
         color: #e9ecef !important;
     }
 
-    .iucn-dot {
-        color: inherit !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -159,8 +156,8 @@ with st.sidebar:
     st.markdown("**IUCN Status Legend**")
     for label, hex_color in IUCN_COLORS_HEX.items():
         st.markdown(
-            f'<span class="iucn-dot" style="color:{hex_color};'
-            f'font-size:1.4rem;line-height:1;">●</span>&nbsp;'
+            f'<span class="iucn-dot" style="color:{hex_color} !important; '
+            f'font-size:1.4rem; line-height:1;">●</span>&nbsp;'
             f'{label.title()}',
             unsafe_allow_html=True,
         )
