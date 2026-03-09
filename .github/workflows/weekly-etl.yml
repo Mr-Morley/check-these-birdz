@@ -8,13 +8,52 @@ on:
 jobs:
   run-etl:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -r requirements.txt
-      - run: python run_pipeline.py
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ──────────────────────────────────────────
+      # STEP 1: Setup (create tables if needed)
+      # ──────────────────────────────────────────
+      - name: Setup tables
+        run: python run_pipeline.py setup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # ──────────────────────────────────────────
+      # STEP 2: Extract (fetch from eBird API)
+      # ──────────────────────────────────────────
+      - name: Extract
+        run: python run_pipeline.py extract
         env:
           EBIRD_API_KEY: ${{ secrets.EBIRD_API_KEY }}
+
+      # ──────────────────────────────────────────
+      # STEP 3: Transform (clean + standardize)
+      # ──────────────────────────────────────────
+      - name: Transform
+        run: python run_pipeline.py transform
+
+      # ──────────────────────────────────────────
+      # STEP 4: Load (enrich + write to PostGIS)
+      # ──────────────────────────────────────────
+      - name: Load
+        run: python run_pipeline.py load
+        env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # ──────────────────────────────────────────
+      # STEP 5: Success summary (visible in Actions UI)
+      # ──────────────────────────────────────────
+      - name: Pipeline summary
+        if: success()
+        run: |
+          echo "## ETL Pipeline Completed" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
