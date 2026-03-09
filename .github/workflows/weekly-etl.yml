@@ -13,10 +13,30 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ------------------------------------------
+  # JOB 1: Environment Setup
+  # ------------------------------------------
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+  # ------------------------------------------
+  # JOB 2: Data Pipeline
+  # ------------------------------------------
   run-etl:
+    needs: setup # This ensures the environment is ready first
     runs-on: ubuntu-latest
     
-    # Variables defined here are inherited by all steps below
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       EBIRD_API_KEY: ${{ secrets.EBIRD_API_KEY }}
@@ -30,7 +50,7 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
 
-      - name: Install dependencies
+      - name: Restore dependencies
         run: pip install -r requirements.txt
 
       - name: Setup tables
