@@ -8,9 +8,6 @@ on:
   # 2. CI/CD: Run whenever code changes on main or dev
   push:
     branches: [ main, dev ]
-    paths:
-      - '**.py'
-      - 'requirements.txt'
   
   # 3. Manual: The "Run Workflow" button for debugging
   workflow_dispatch:
