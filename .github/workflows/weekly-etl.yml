@@ -1,45 +1,58 @@
+# Runs the ETL pipeline every Monday at 08:00 SAST (06:00 UTC)
+# Each step shows separately in GitHub Actions
+
 name: Weekly ETL
 
 on:
   schedule:
-    - cron: '0 4 * * *'
-  push:
-    branches: [ main, dev ]
+    - cron: '0 6 * * 1'
   workflow_dispatch:
 
 jobs:
   run-etl:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       EBIRD_API_KEY: ${{ secrets.EBIRD_API_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Environment
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Setup Tables
-        run: python run_pipeline.py setup
+      # --- Audit: log pipeline start ---
+      - name: Start audit
+        id: audit
+        run: |
+          RUN_ID=$(python src/etl_audit.py start)
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+
+      # --- Pipeline steps ---
+      - name: Setup
+        run: python run_pipeline.py --step setup
 
       - name: Extract
-        run: python run_pipeline.py extract
+        run: python run_pipeline.py --step extract
 
       - name: Transform
-        run: python run_pipeline.py transform
+        run: python run_pipeline.py --step transform
 
       - name: Load
-        run: python run_pipeline.py load
+        run: python run_pipeline.py --step load
 
-      - name: Generate Pipeline Report
-        if: always()
-        run: |
-          echo "### ETL Execution Summary" >> $GITHUB_STEP_SUMMARY
-          echo "Status: ${{ job.status == 'success' && 'Success' || 'Failed' }}" >> $GITHUB_STEP_SUMMARY
+      # --- Audit: log success ---
+      - name: Log success
+        if: success()
+        run: python src/etl_audit.py success ${{ steps.audit.outputs.run_id }}
+
+      # --- Audit: log failure ---
+      - name: Log failure
+        if: failure()
+        run: python src/etl_audit.py fail ${{ steps.audit.outputs.run_id }} "Pipeline failed — check Actions log"
