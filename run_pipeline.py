@@ -34,7 +34,7 @@ OBS_CSV = DATA_DIR / "observations.csv"
 def build_pipeline():
     """Builds the pipeline object from environment variables."""
     ebird_key = os.environ.get("EBIRD_API_KEY", "")
- #   db_url = os.environ.get("DATABASE_URL", "")
+    db_url = os.environ.get("DATABASE_URL", "")
     return SetupExtractTransformLoad(ebird_key, db_url)
 
 
