@@ -33,6 +33,7 @@ jobs:
       - name: Extract
         run: python run_pipeline.py extract
         env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           EBIRD_API_KEY: ${{ secrets.EBIRD_API_KEY }}
 
       # ──────────────────────────────────────────
