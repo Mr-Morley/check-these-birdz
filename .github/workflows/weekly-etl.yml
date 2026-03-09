@@ -1,42 +1,15 @@
 name: Weekly ETL
 
 on:
-  # 1. Automatic data fetch: Daily at 4 AM UTC
   schedule:
     - cron: '0 4 * * *'
-  
-  # 2. CI/CD: Run whenever code changes on main or dev
   push:
     branches: [ main, dev ]
-  
-  # 3. Manual: The "Run Workflow" button for debugging
   workflow_dispatch:
 
 jobs:
-  # ------------------------------------------
-  # JOB 1: Environment Setup
-  # ------------------------------------------
-  setup:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-  # ------------------------------------------
-  # JOB 2: Data Pipeline
-  # ------------------------------------------
   run-etl:
-    needs: setup # This ensures the environment is ready first
     runs-on: ubuntu-latest
-    
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       EBIRD_API_KEY: ${{ secrets.EBIRD_API_KEY }}
@@ -44,38 +17,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      - name: Setup Environment
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
 
-      - name: Restore dependencies
+      - name: Install Dependencies
         run: pip install -r requirements.txt
 
-      - name: Setup tables
+      - name: Setup Tables
         run: python run_pipeline.py setup
 
-      - name: Extract (eBird API)
+      - name: Extract
         run: python run_pipeline.py extract
 
       - name: Transform
         run: python run_pipeline.py transform
 
-      - name: Load (PostGIS)
+      - name: Load
         run: python run_pipeline.py load
 
-      # ------------------------------------------
-      # DASHBOARD SUMMARY
-      # ------------------------------------------
       - name: Generate Pipeline Report
         if: always()
         run: |
           echo "### ETL Execution Summary" >> $GITHUB_STEP_SUMMARY
           echo "Status: ${{ job.status == 'success' && 'Success' || 'Failed' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **User:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Data Source:** eBird API" >> $GITHUB_STEP_SUMMARY
-          echo "- **Database:** PostGIS (Production)" >> $GITHUB_STEP_SUMMARY
-          echo ""
-          echo "[View Full Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
