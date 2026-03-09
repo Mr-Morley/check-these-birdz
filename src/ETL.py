@@ -135,24 +135,48 @@ class SetupExtractTransformLoad:
         self.raw_data = self.ebird_api.fetch_recent_observations()
 
     def transform(self):
-        """Cleans data and standardizes formats for PostgreSQL."""
-        print("Transforming data... \n")
-        df = pd.DataFrame(self.raw_data)
-        df.columns = [col.lower() for col in df.columns]
-        
-        # Standardize
-        text_cols = ['speciescode', 'comname', 'sciname']
-        for col in text_cols:
-            df[col] = df[col].astype(str).str.lower()
+            """Cleans data and standardizes formats for PostgreSQL."""
+            print("Transforming data...\n")
+            df = pd.DataFrame(self.raw_data)
 
-        # Handle varying eBird timestamp formats
-        df['obsdt'] = pd.to_datetime(df['obsdt'], format='mixed')
-        
-        self.species_df = df[['speciescode', 'comname', 'sciname']].drop_duplicates()
-        
-        df['obs_id'] = df['subid'] + '_' + df['speciescode']
-        self.obs_df = df[['obs_id', 'speciescode', 'howmany', 'lat', 'lng', 'obsdt']]
+            # STEP 1: Rename eBird camelCase columns to our lowercase DB columns
+            column_map = {
+                'speciesCode': 'speciescode',
+                'comName':     'comname',
+                'sciName':     'sciname',
+                'subId':       'subid',
+                'howMany':     'howmany',
+                'lat':         'lat',
+                'lng':         'lng',
+                'obsDt':       'obsdt',
+            }
+            df = df.rename(columns=column_map)
 
+            # STEP 2: Only keep columns we care about (ignore extras the API sends)
+            required = ['speciescode', 'comname', 'sciname', 'subid', 'lat', 'lng', 'obsdt']
+            for col in required:
+                if col not in df.columns:
+                    raise ValueError(f"Missing required column from eBird API: {col}")
+
+            # STEP 3: Add howmany if missing (eBird omits it when count is unknown)
+            if 'howmany' not in df.columns:
+                df['howmany'] = None
+
+            # STEP 4: Standardize text to lowercase
+            for col in ['speciescode', 'comname', 'sciname']:
+                df[col] = df[col].astype(str).str.lower().str.strip()
+
+            # STEP 5: Parse timestamps
+            df['obsdt'] = pd.to_datetime(df['obsdt'], format='mixed')
+
+            # STEP 6: Build species and observations DataFrames
+            self.species_df = df[['speciescode', 'comname', 'sciname']].drop_duplicates()
+
+            df['obs_id'] = df['subid'] + '_' + df['speciescode']
+            self.obs_df = df[['obs_id', 'speciescode', 'howmany', 'lat', 'lng', 'obsdt']]
+
+            print(f"Transformed: {len(self.species_df)} species, {len(self.obs_df)} observations.")
+            
     def load(self):
         """Enriches new species and saves new observations to PostGIS."""
         print("Loading data into PostGIS...\n")
